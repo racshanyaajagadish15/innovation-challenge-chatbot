@@ -1,0 +1,21 @@
+{
+  "name": "carehive",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build -w shared",
+    "build:backend": "npm run build -w backend",
+    "build:frontend": "npm run build -w frontend",
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "db:generate": "npm run db:generate -w backend",
+    "db:push": "npm run db:push -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "postinstall": "npm run build -w shared 2>/dev/null || true"
+  },
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ]
+}
