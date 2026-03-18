@@ -9,20 +9,20 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const { accessToken } = useStore();
   const authed = Boolean(accessToken);
 
+  if (!authed) {
+    return <>{children}</>;
+  }
+
   return (
-    <>
-      <div className="fixed top-4 right-4 z-50">
-        <ThemeToggle />
-      </div>
-      {authed ? (
-        <div className="flex min-h-screen">
-          <Nav />
-          <main className="flex-1 overflow-auto">{children}</main>
+    <div className="flex min-h-screen">
+      <Nav />
+      <main className="flex-1 overflow-auto relative">
+        <div className="fixed top-4 right-4 z-50">
+          <ThemeToggle />
         </div>
-      ) : (
-        <>{children}</>
-      )}
-    </>
+        {children}
+      </main>
+    </div>
   );
 }
 

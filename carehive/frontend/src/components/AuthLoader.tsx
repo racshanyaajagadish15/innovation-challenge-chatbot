@@ -7,7 +7,7 @@ import { useStore } from '@/store/useStore';
 import { subscribeToUser } from '@/lib/socket';
 
 /**
- * Runs once on mount: restore Supabase session, then load user (me or demo) and subscribe to socket.
+ * Restore Supabase session on mount. No demo user: when not logged in, user stays null and only landing is shown.
  */
 export function AuthLoader() {
   const { setUser, setAccessToken, setAuthReady } = useStore();
@@ -28,20 +28,19 @@ export function AuthLoader() {
             const u = await api.getMe();
             setUser(u.id, u.name);
             subscribeToUser(u.id);
-            setAuthReady(true);
-            return;
           } catch {
-            // Profile not set or API error – continue to demo
+            setUser(session.user?.id ?? '', session.user?.email ?? null);
+            subscribeToUser(session.user?.id ?? '');
           }
+          setAuthReady(true);
+          return;
         }
         setAccessToken(null);
+        setUser('', null);
       }
-      const u = await api.getDemoUser();
-      setUser(u.id, u.name);
-      subscribeToUser(u.id);
       setAuthReady(true);
     })();
-  }, [setUser, setAccessToken]);
+  }, [setUser, setAccessToken, setAuthReady]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -60,9 +59,7 @@ export function AuthLoader() {
         }
       } else {
         setAccessToken(null);
-        const u = await api.getDemoUser();
-        setUser(u.id, u.name);
-        subscribeToUser(u.id);
+        setUser('', null);
       }
     });
     return () => subscription.unsubscribe();

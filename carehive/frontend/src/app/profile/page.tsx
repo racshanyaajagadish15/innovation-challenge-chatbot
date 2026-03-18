@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { api } from '@/lib/api';
 import { useStore } from '@/store/useStore';
+import { signOut } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -62,17 +63,15 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleSignOut() {
-    if (supabase) await supabase.auth.signOut();
-    useStore.getState().setAccessToken(null);
-    router.push('/');
+  function handleSignOut() {
+    signOut(router);
   }
 
   if (!supabase) {
     return (
       <div className="p-8 max-w-lg mx-auto">
-        <p className="text-slate-600">Auth not configured. Use demo mode from Dashboard.</p>
-        <Link href="/dashboard" className="mt-4 inline-block text-teal-600 hover:underline">Back to Dashboard</Link>
+        <p className="text-slate-600 dark:text-slate-300">Auth is not configured.</p>
+        <Link href="/" className="mt-4 inline-block text-teal-600 hover:underline dark:text-teal-400">Back to home</Link>
       </div>
     );
   }
