@@ -6,6 +6,9 @@
 const USE_MOCK_LLM = process.env.USE_MOCK_LLM === 'true' || process.env.USE_MOCK_LLM === '1';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+export function getLLMMode() {
+    return USE_MOCK_LLM || !GROQ_API_KEY ? 'mock' : 'groq';
+}
 export async function generateCompletion(messages, options) {
     if (USE_MOCK_LLM || !GROQ_API_KEY) {
         return getMockResponse(messages);

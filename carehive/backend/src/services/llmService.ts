@@ -13,6 +13,10 @@ export interface LLMPrompt {
   content: string;
 }
 
+export function getLLMMode(): 'mock' | 'groq' {
+  return USE_MOCK_LLM || !GROQ_API_KEY ? 'mock' : 'groq';
+}
+
 export async function generateCompletion(
   messages: LLMPrompt[],
   options?: { maxTokens?: number }

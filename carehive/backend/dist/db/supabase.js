@@ -76,22 +76,34 @@ export async function createHealthLog(row) {
     if (!error) {
         return { data: data, error: null };
     }
-    // Backward compatibility: older DBs might not have `health_logs.source` yet.
-    const msg = String(error?.message ?? error);
-    const missingSource = msg.toLowerCase().includes("health_logs") &&
-        msg.toLowerCase().includes('source') &&
-        msg.toLowerCase().includes('column');
-    if (missingSource) {
-        // Remove `source` from the insert payload entirely.
-        const { source: _omitSource, ...rowWithoutSource } = row;
-        const { data: retryData, error: retryError } = await supabase
+    const msg = String(error?.message ?? error).toLowerCase();
+    const isColumnError = msg.includes('health_logs') && msg.includes('column');
+    if (isColumnError) {
+        // Retry strategy for older DB schemas:
+        // 1) Drop newer optional columns (sleep/activity).
+        // 2) If still failing due to missing `source`, drop `source` too.
+        const { sleep_hours: _sh, activity_minutes: _am, ...withoutSleepActivity } = insertWithSource;
+        const { data: retry1, error: err1 } = await supabase
             .from('health_logs')
-            .insert(rowWithoutSource)
+            .insert(withoutSleepActivity)
             .select('*')
             .single();
-        if (retryError)
-            return { data: null, error: retryError };
-        return { data: retryData, error: null };
+        if (!err1)
+            return { data: retry1, error: null };
+        const msg1 = String(err1?.message ?? err1).toLowerCase();
+        const missingSource = msg1.includes('health_logs') && msg1.includes('source') && msg1.includes('column');
+        if (missingSource) {
+            const { source: _s, ...withoutSource } = withoutSleepActivity;
+            const { data: retry2, error: err2 } = await supabase
+                .from('health_logs')
+                .insert(withoutSource)
+                .select('*')
+                .single();
+            if (!err2)
+                return { data: retry2, error: null };
+            return { data: null, error: err2 };
+        }
+        return { data: null, error: err1 };
     }
     return { data: null, error };
 }
@@ -152,7 +164,169 @@ export function toHealthLog(h) {
         notes: h.notes,
         timestamp: h.timestamp,
         source: h.source || 'manual',
+        sleepHours: h.sleep_hours ?? undefined,
+        activityMinutes: h.activity_minutes ?? undefined,
     };
+}
+export async function getMedicationsByUserId(userId) {
+    const { data, error } = await supabase
+        .from('medications')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+    if (error)
+        return { data: [], error };
+    return { data: (data || []), error: null };
+}
+export async function getMedicationByIdAndUser(id, userId) {
+    const { data, error } = await supabase
+        .from('medications')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (error)
+        return { data: null, error };
+    return { data: data, error: null };
+}
+export async function createMedication(row) {
+    const { data, error } = await supabase
+        .from('medications')
+        .insert(row)
+        .select('*')
+        .single();
+    if (error)
+        return { data: null, error };
+    return { data: data, error: null };
+}
+export async function updateMedication(id, userId, updates) {
+    const { data, error } = await supabase
+        .from('medications')
+        .update(updates)
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select('*')
+        .single();
+    if (error)
+        return { data: null, error };
+    return { data: data, error: null };
+}
+export async function deleteMedication(id, userId) {
+    const { error } = await supabase.from('medications').delete().eq('id', id).eq('user_id', userId);
+    return { error };
+}
+export async function getRemindersByMedicationId(medicationId) {
+    const { data, error } = await supabase
+        .from('medication_reminders')
+        .select('*')
+        .eq('medication_id', medicationId)
+        .order('time_of_day', { ascending: true });
+    if (error)
+        return { data: [], error };
+    return { data: (data || []), error: null };
+}
+export async function getRemindersByUserId(userId) {
+    const { data: meds } = await getMedicationsByUserId(userId);
+    const out = [];
+    for (const m of meds) {
+        const { data: rems } = await getRemindersByMedicationId(m.id);
+        for (const r of rems) {
+            out.push({ ...r, medication_name: m.name });
+        }
+    }
+    return out.sort((a, b) => a.time_of_day.localeCompare(b.time_of_day));
+}
+export async function createMedicationReminder(row) {
+    const { data, error } = await supabase
+        .from('medication_reminders')
+        .insert(row)
+        .select('*')
+        .single();
+    if (error)
+        return { data: null, error };
+    return { data: data, error: null };
+}
+export async function updateMedicationReminder(id, medicationId, updates) {
+    const { data, error } = await supabase
+        .from('medication_reminders')
+        .update(updates)
+        .eq('id', id)
+        .eq('medication_id', medicationId)
+        .select('*')
+        .single();
+    if (error)
+        return { data: null, error };
+    return { data: data, error: null };
+}
+export async function deleteMedicationReminder(id, medicationId) {
+    const { error } = await supabase.from('medication_reminders').delete().eq('id', id).eq('medication_id', medicationId);
+    return { error };
+}
+export async function createMedicationIntakes(rows) {
+    const { data, error } = await supabase.from('medication_intakes').insert(rows).select('*');
+    if (error)
+        return { data: null, error };
+    return { data: (data || []), error: null };
+}
+export async function getMedicationIntakesForDay(userId, dayIso) {
+    // dayIso: YYYY-MM-DD in user's local assumption; stored as timestamps in UTC.
+    const start = new Date(`${dayIso}T00:00:00.000Z`).toISOString();
+    const end = new Date(`${dayIso}T23:59:59.999Z`).toISOString();
+    const { data, error } = await supabase
+        .from('medication_intakes')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('taken_at', start)
+        .lte('taken_at', end);
+    if (error)
+        return { data: [], error };
+    return { data: (data || []), error: null };
+}
+export async function createActivitySession(row) {
+    const { data, error } = await supabase.from('activity_sessions').insert(row).select('*').single();
+    if (error)
+        return { data: null, error };
+    return { data: data, error: null };
+}
+export async function getActivitySessionsByUserId(userId, limit = 30) {
+    const { data, error } = await supabase
+        .from('activity_sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('start_time', { ascending: false })
+        .limit(limit);
+    if (error)
+        return { data: [], error };
+    return { data: (data || []), error: null };
+}
+export async function createEhrUpload(row) {
+    const { data, error } = await supabase.from('ehr_uploads').insert(row).select('*').single();
+    if (error)
+        return { data: null, error };
+    return { data: data, error: null };
+}
+export async function getLatestEhrUpload(userId) {
+    const { data, error } = await supabase
+        .from('ehr_uploads')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error)
+        return { data: null, error };
+    return { data: data, error: null };
+}
+export async function getEhrUploadsByUserId(userId, limit = 20) {
+    const { data, error } = await supabase
+        .from('ehr_uploads')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (error)
+        return { data: [], error };
+    return { data: (data || []), error: null };
 }
 export function toIntervention(i) {
     return {

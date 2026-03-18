@@ -7,6 +7,10 @@ import { signOut } from '@/lib/auth';
 
 const links = [
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/log', label: 'Health log' },
+  { href: '/history', label: 'History' },
+  { href: '/medications', label: 'Medications' },
+  { href: '/ehr', label: 'EHR import' },
   { href: '/timeline', label: 'Care Timeline' },
   { href: '/check-in', label: 'Video check-in' },
   { href: '/chat', label: 'Chat' },

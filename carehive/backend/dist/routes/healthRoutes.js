@@ -1,7 +1,11 @@
 import { Router } from 'express';
-import { logHealth, getHistory } from '../controllers/healthController.js';
+import { logHealth, getHistory, logMedicationIntakes, logActivitySession, getActivityHistory } from '../controllers/healthController.js';
 import { optionalAuth } from '../middleware/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 router.post('/log', optionalAuth, logHealth);
 router.get('/history', optionalAuth, getHistory);
+router.post('/intakes', requireAuth, logMedicationIntakes);
+router.post('/activity', requireAuth, logActivitySession);
+router.get('/activity/history', optionalAuth, getActivityHistory);
 export default router;
