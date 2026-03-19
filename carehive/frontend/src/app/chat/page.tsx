@@ -14,7 +14,9 @@ interface Message {
 }
 
 export default function ChatPage() {
-  const { userId } = useStore();
+  const { userId, userRole, viewingPatientId } = useStore();
+  const isMultiPatientRole = userRole === 'clinician' || userRole === 'family';
+  const targetUserId = isMultiPatientRole ? (viewingPatientId || userId) : userId;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,7 +33,7 @@ export default function ChatPage() {
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setLoading(true);
     try {
-      const { reply } = await api.chat(text, userId ?? undefined);
+      const { reply } = await api.chat(text, targetUserId ?? undefined);
       setMessages((m) => [...m, { role: 'assistant', content: reply }]);
     } catch {
       setMessages((m) => [

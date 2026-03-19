@@ -42,6 +42,20 @@ export const api = {
   deleteAccount: () =>
     fetchApi<{ success: boolean }>('/user/me', { method: 'DELETE' }),
 
+  // --- Relationships ---
+  getLinkedPatients: () =>
+    fetchApi<{ patients: Array<{ id: string; name: string; age: number; condition: string }> }>('/relationships'),
+  addRelationship: (patientId: string) =>
+    fetchApi<{ success: boolean; patient: { id: string; name: string; age: number; condition: string } }>(
+      '/relationships', { method: 'POST', body: JSON.stringify({ patientId }) }
+    ),
+  removeRelationship: (patientId: string) =>
+    fetchApi<{ success: boolean }>(`/relationships/${patientId}`, { method: 'DELETE' }),
+  searchUsers: (q: string) =>
+    fetchApi<{ users: Array<{ id: string; name: string; age: number; condition: string }> }>(
+      `/relationships/search?q=${encodeURIComponent(q)}`
+    ),
+
   // --- Health ---
   logHealth: (body: { userId?: string; medicationTaken: boolean; steps: number; mood: number; notes?: string }) =>
     fetchApi<{ id: string }>('/health/log', { method: 'POST', body: JSON.stringify(body) }),

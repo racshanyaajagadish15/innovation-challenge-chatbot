@@ -61,10 +61,19 @@ interface CarehiveState {
 export const useStore = create<CarehiveState>((set) => ({
   userId: null,
   userName: null,
-  userRole: 'patient' as UserRole,
+  userRole: (() => {
+    if (typeof window === 'undefined') return 'patient' as UserRole;
+    const cached = window.localStorage.getItem('carehive_role_last') as UserRole | null;
+    return (cached === 'patient' || cached === 'clinician' || cached === 'family') ? cached : ('patient' as UserRole);
+  })(),
   permissions: ROLE_PERMISSIONS.patient,
   setUser: (id, name) => set({ userId: id, userName: name }),
-  setUserRole: (role) => set({ userRole: role, permissions: ROLE_PERMISSIONS[role] }),
+  setUserRole: (role) => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('carehive_role_last', role);
+    }
+    set({ userRole: role, permissions: ROLE_PERMISSIONS[role] });
+  },
 
   viewingPatientId: null,
   viewingPatientName: null,

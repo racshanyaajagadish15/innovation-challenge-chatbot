@@ -34,6 +34,8 @@ html[data-theme='dark'] {
   --card-solid: #07131a;
   --card-border: #0f2c3a;
   --muted: #93a4b8;
+  /* In dark mode, keep "tinted" surfaces dark for contrast */
+  --primary-light: rgba(13, 148, 136, 0.18);
   --chart-grid-stroke: #1b3a48;
   --shadow: 0 1px 3px rgba(0,0,0,.30);
   --shadow-lg: 0 20px 80px -40px rgba(0,0,0,.65);
@@ -56,6 +58,7 @@ html[data-role='clinician'] {
   --role-dot: #6366f1;
 }
 html[data-theme='dark'][data-role='clinician'] {
+  --primary-light: rgba(79, 70, 229, 0.18);
   --nav-active-bg: rgba(79,70,229,0.15);
   --nav-active-text: #a5b4fc;
   --nav-brand: #a5b4fc;
@@ -73,6 +76,7 @@ html[data-role='family'] {
   --role-dot: #f59e0b;
 }
 html[data-theme='dark'][data-role='family'] {
+  --primary-light: rgba(217, 119, 6, 0.20);
   --nav-active-bg: rgba(217,119,6,0.15);
   --nav-active-text: #fcd34d;
   --nav-brand: #fcd34d;

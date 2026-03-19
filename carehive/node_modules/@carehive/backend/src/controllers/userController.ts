@@ -55,10 +55,6 @@ export async function updateProfile(req: AuthRequest, res: Response) {
       condition?: string;
       role?: string;
     };
-    if (!name || typeof age !== 'number' || !condition) {
-      res.status(400).json({ error: 'Missing or invalid: name, age, condition' });
-      return;
-    }
     const email = req.authUser?.email ?? null;
 
     let validRole: string | undefined;
@@ -72,8 +68,24 @@ export async function updateProfile(req: AuthRequest, res: Response) {
       console.log(`[updateProfile] role=${role}, currentRole=${currentRole}, validRole=${validRole}`);
     }
 
+    const effectiveRole = (validRole ?? (await getUserById(userId)).data?.role ?? 'patient') as string;
+
+    // Condition is a patient-only profile field. For clinician/family we accept it as optional.
+    if (!name || typeof age !== 'number') {
+      res.status(400).json({ error: 'Missing or invalid: name, age' });
+      return;
+    }
+    const safeCondition =
+      effectiveRole === 'patient'
+        ? (condition || '')
+        : (condition && condition.trim() ? condition : 'other');
+    if (effectiveRole === 'patient' && !safeCondition) {
+      res.status(400).json({ error: 'Missing or invalid: condition' });
+      return;
+    }
+
     const { data, error } = await upsertUserProfile(userId, {
-      name, age, condition, email, role: validRole,
+      name, age, condition: safeCondition, email, role: validRole,
     });
     if (error) {
       console.error(error);
@@ -81,12 +93,23 @@ export async function updateProfile(req: AuthRequest, res: Response) {
       return;
     }
 
-    if (validRole && data && data.role !== validRole) {
+    if (validRole) {
+      // Persist role in two places for reliability:
+      // 1. users table (DB column, may or may not exist)
+      // 2. auth.users app_metadata (baked into JWT — survives page refreshes)
       try {
         await supabase.from('users').update({ role: validRole }).eq('id', userId);
-        data.role = validRole;
+        if (data) data.role = validRole;
       } catch (e) {
-        console.warn('Fallback role update failed:', e);
+        console.warn('DB role update failed (column may not exist yet):', e);
+      }
+      try {
+        await supabase.auth.admin.updateUserById(userId, {
+          app_metadata: { role: validRole },
+        });
+        console.log(`[updateProfile] app_metadata.role set to ${validRole} for ${userId}`);
+      } catch (e) {
+        console.warn('app_metadata role update failed:', e);
       }
     }
 
@@ -107,6 +130,8 @@ export async function deleteAccount(req: AuthRequest, res: Response) {
     await supabase.from('health_logs').delete().eq('user_id', userId);
     await supabase.from('interventions').delete().eq('user_id', userId);
     await supabase.from('ehr_uploads').delete().eq('user_id', userId);
+    await supabase.from('user_relationships').delete().eq('from_user_id', userId);
+    await supabase.from('user_relationships').delete().eq('to_user_id', userId);
     await supabase.from('users').delete().eq('id', userId);
 
     try {
@@ -125,35 +150,37 @@ export async function deleteAccount(req: AuthRequest, res: Response) {
 export async function getPatients(req: AuthRequest, res: Response) {
   try {
     const userId = req.userId!;
-    const { data: me } = await getUserById(userId);
-    const myRole = me?.role || 'patient';
 
-    if (myRole === 'patient') {
+    const { data: rels, error: relErr } = await supabase
+      .from('user_relationships')
+      .select('to_user_id')
+      .eq('from_user_id', userId);
+
+    if (relErr) {
+      console.error('getPatients relationships error:', relErr);
+      res.json({ patients: [] });
+      return;
+    }
+
+    const ids = (rels ?? []).map((r: { to_user_id: string }) => r.to_user_id);
+    if (ids.length === 0) {
       res.json({ patients: [] });
       return;
     }
 
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, age, condition, role')
-      .eq('role', 'patient')
-      .neq('id', userId)
+      .select('id, name, age, condition')
+      .in('id', ids)
       .order('name');
 
     if (error) {
-      console.error('getPatients error:', error);
-      res.status(500).json({ error: 'Failed to fetch patients' });
+      console.error('getPatients users error:', error);
+      res.json({ patients: [] });
       return;
     }
 
-    res.json({
-      patients: (data ?? []).map((p: { id: string; name: string; age: number; condition: string }) => ({
-        id: p.id,
-        name: p.name,
-        age: p.age,
-        condition: p.condition,
-      })),
-    });
+    res.json({ patients: data ?? [] });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to fetch patients' });

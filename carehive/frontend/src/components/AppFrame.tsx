@@ -6,12 +6,13 @@ import { Nav } from '@/components/Nav';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 export function AppFrame({ children }: { children: ReactNode }) {
-  const { accessToken, userRole } = useStore();
+  const { accessToken, userRole, authReady } = useStore();
   const authed = Boolean(accessToken);
 
   useEffect(() => {
+    if (!authReady) return;
     document.documentElement.setAttribute('data-role', userRole);
-  }, [userRole]);
+  }, [authReady, userRole]);
 
   if (!authed) {
     return <>{children}</>;

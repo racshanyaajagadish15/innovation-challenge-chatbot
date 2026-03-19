@@ -84,3 +84,15 @@ CREATE TABLE IF NOT EXISTS ehr_uploads (
 
 CREATE INDEX IF NOT EXISTS idx_ehr_uploads_user_id ON ehr_uploads(user_id);
 
+-- User relationships (clinician/family → patient links)
+CREATE TABLE IF NOT EXISTS user_relationships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(from_user_id, to_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_relationships_from ON user_relationships(from_user_id);
+CREATE INDEX IF NOT EXISTS idx_user_relationships_to ON user_relationships(to_user_id);
+

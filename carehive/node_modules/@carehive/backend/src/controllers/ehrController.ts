@@ -6,9 +6,10 @@ import { parseEhrText, type EhrParsedData } from '../services/ehrParserService.j
 const EHR_TABLE = 'ehr_uploads';
 
 let discoveredColumns: string[] | null = null;
+let ehrDiscoveryTime = 0;
 
 async function discoverColumns(): Promise<string[]> {
-  if (discoveredColumns) return discoveredColumns;
+  if (discoveredColumns && Date.now() - ehrDiscoveryTime < 60_000) return discoveredColumns;
   const { data, error } = await supabase.from(EHR_TABLE).select('*').limit(0);
   if (!error && data !== null) {
     // If table is empty but query succeeded, try inserting to discover
@@ -26,6 +27,7 @@ async function discoverColumns(): Promise<string[]> {
     if (!e) found.push(col);
   }
   discoveredColumns = found;
+  ehrDiscoveryTime = Date.now();
   console.log(`[EHR] Discovered columns in ${EHR_TABLE}:`, found);
   return found;
 }
@@ -211,30 +213,61 @@ export async function convertEhrToMedications(req: AuthRequest, res: Response) {
       weekly: ['08:00'],
     };
 
-    const toInsert = parsedData.medications.map((m) => {
-      const freq = FREQUENCY_MAP[m.frequency.toLowerCase()] || 'once_daily';
-      return {
-        user_id: normalized.userId || userId,
-        name: m.name,
-        dosage: m.dosage,
-        frequency: freq,
-        timing: TIMING_MAP[freq] || ['08:00'],
-        instructions: m.instructions || null,
-      };
-    });
-
-    const { data: inserted, error: insertErr } = await supabase
-      .from('medications')
-      .insert(toInsert)
-      .select('*');
-
-    if (insertErr) {
-      console.error(insertErr);
-      res.status(500).json({ error: 'Failed to create medications from EHR' });
-      return;
+    // Discover actual columns in the medications table
+    const medCandidates = [
+      'id', 'user_id', 'patient_id',
+      'name', 'medication_name', 'med_name',
+      'dosage', 'dose',
+      'frequency', 'freq',
+      'timing', 'schedule', 'times',
+      'instructions', 'notes', 'description',
+      'created_at', 'updated_at',
+    ];
+    const medCols: string[] = [];
+    for (const col of medCandidates) {
+      const { error: e } = await supabase.from('medications').select(col).limit(1);
+      if (!e) medCols.push(col);
     }
 
-    res.json({ created: (inserted || []).length, medications: inserted || [] });
+    const targetUser = normalized.userId || userId;
+    const inserted: Record<string, unknown>[] = [];
+
+    for (const m of parsedData.medications) {
+      const freq = FREQUENCY_MAP[m.frequency.toLowerCase()] || 'once_daily';
+      const payload: Record<string, unknown> = {};
+
+      if (medCols.includes('user_id')) payload.user_id = targetUser;
+      else if (medCols.includes('patient_id')) payload.patient_id = targetUser;
+
+      if (medCols.includes('name')) payload.name = m.name;
+      else if (medCols.includes('medication_name')) payload.medication_name = m.name;
+
+      if (medCols.includes('dosage')) payload.dosage = m.dosage;
+      else if (medCols.includes('dose')) payload.dose = m.dosage;
+
+      if (medCols.includes('frequency')) payload.frequency = freq;
+      else if (medCols.includes('freq')) payload.freq = freq;
+
+      if (medCols.includes('timing')) payload.timing = TIMING_MAP[freq] || ['08:00'];
+      else if (medCols.includes('schedule')) payload.schedule = TIMING_MAP[freq] || ['08:00'];
+
+      if (medCols.includes('instructions')) payload.instructions = m.instructions || null;
+      else if (medCols.includes('notes')) payload.notes = m.instructions || null;
+
+      const { data: row, error: insErr } = await supabase
+        .from('medications')
+        .insert(payload)
+        .select('*')
+        .single();
+
+      if (insErr) {
+        console.error('[EHR] Medication insert error:', insErr);
+      } else if (row) {
+        inserted.push(row as Record<string, unknown>);
+      }
+    }
+
+    res.json({ created: inserted.length, medications: inserted });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to convert EHR to medications' });

@@ -35,27 +35,46 @@ export default function InsightsPage() {
 }
 
 function InsightsInner() {
-  const { userId, userName } = useStore();
+  const { userId, userName, userRole, viewingPatientId, viewingPatientName } = useStore();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isMultiPatientRole = userRole === 'clinician' || userRole === 'family';
+  const targetUserId = isMultiPatientRole ? viewingPatientId : userId;
+
   useEffect(() => {
-    if (!userId) return;
+    if (!targetUserId) {
+      setHistory([]);
+      setInsights([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    Promise.all([api.getHistory(userId, 60), api.getInsights(userId)])
+    Promise.all([api.getHistory(targetUserId, 60), api.getInsights(targetUserId)])
       .then(([logs, { insights: i }]) => {
         setHistory(logs);
         setInsights(i);
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [userId]);
+  }, [targetUserId]);
 
   const analytics = useMemo(() => computeAnalytics(history), [history]);
   const riskAlerts = useMemo(() => computeRiskAlerts(history, analytics), [history, analytics]);
   const dailySummary = useMemo(() => computeDailySummary(history, analytics), [history, analytics]);
+
+  if (isMultiPatientRole && !viewingPatientId) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 md:p-8 max-w-6xl mx-auto">
+        <EmptyState
+          title="No patient selected"
+          description="Use the sidebar to add and select a patient to view their health insights."
+        />
+      </motion.div>
+    );
+  }
 
   if (loading) {
     return (

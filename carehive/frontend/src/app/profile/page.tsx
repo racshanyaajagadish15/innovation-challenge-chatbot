@@ -61,8 +61,8 @@ export default function ProfilePage() {
       return;
     }
     const ageNum = parseInt(age, 10);
-    if (!name.trim() || isNaN(ageNum) || ageNum < 1 || ageNum > 120 || !condition) {
-      setError('Please enter name, valid age (1-120), and condition.');
+    if (!name.trim() || isNaN(ageNum) || ageNum < 1 || ageNum > 120 || (isPatient && !condition)) {
+      setError(isPatient ? 'Please enter name, valid age (1-120), and condition.' : 'Please enter name and valid age (1-120).');
       return;
     }
     setError(null);
@@ -70,7 +70,14 @@ export default function ProfilePage() {
     try {
       const storeRole = useStore.getState().userRole;
       const roleToSave = isNew && signupRole ? signupRole : storeRole;
-      const u = await api.updateProfile({ name: name.trim(), age: ageNum, condition, role: roleToSave });
+      const u = await api.updateProfile({
+        name: name.trim(),
+        age: ageNum,
+        // Clinician/family profiles should not have a medical condition.
+        // We store a safe placeholder for DB compatibility.
+        condition: isPatient ? condition : 'other',
+        role: roleToSave,
+      });
       setUser(u.id, u.name);
       if (u.role) setUserRole(u.role as UserRole);
       if (isNew) localStorage.removeItem('carehive_signup_role');
@@ -125,6 +132,7 @@ export default function ProfilePage() {
   }
 
   const displayRole = isNew && signupRole ? signupRole : (userRole !== 'patient' ? userRole : role);
+  const isPatient = displayRole === 'patient';
   const inputClass =
     'w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 outline-none transition-colors';
 
@@ -179,17 +187,19 @@ export default function ProfilePage() {
                 className={inputClass}
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Condition</label>
-              <select value={condition} onChange={(e) => setCondition(e.target.value)} required className={inputClass}>
-                <option value="">Select...</option>
-                {CONDITIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c.replace('_', ' ')}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {isPatient && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Condition</label>
+                <select value={condition} onChange={(e) => setCondition(e.target.value)} required className={inputClass}>
+                  <option value="">Select...</option>
+                  {CONDITIONS.map((c) => (
+                    <option key={c} value={c}>
+                      {c.replace('_', ' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Role — read-only display */}
             <div>

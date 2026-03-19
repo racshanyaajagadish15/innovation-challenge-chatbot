@@ -22,16 +22,24 @@ export default function EhrPage() {
 }
 
 function EhrInner() {
-  const { userRole } = useStore();
+  const { userId, userRole, viewingPatientId, viewingPatientName } = useStore();
   const [records, setRecords] = useState<EhrRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<EhrRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const isMultiPatientRole = userRole === 'clinician' || userRole === 'family';
+  const targetPatientId = isMultiPatientRole ? viewingPatientId : undefined;
+
   async function loadRecords() {
+    if (isMultiPatientRole && !viewingPatientId) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const res = await api.getEhrRecords();
+      const res = await api.getEhrRecords(targetPatientId ?? undefined);
       setRecords(res?.records ?? []);
     } catch (e) {
       console.warn('Failed to load EHR records:', e);
@@ -43,10 +51,14 @@ function EhrInner() {
 
   useEffect(() => {
     loadRecords();
-  }, []);
+  }, [viewingPatientId]);
 
   async function handleUpload(fileName: string, rawText: string) {
-    const record = await api.uploadEhr({ fileName, rawText });
+    const record = await api.uploadEhr({
+      fileName,
+      rawText,
+      patientId: targetPatientId ?? undefined,
+    });
     setRecords((prev) => [record, ...prev]);
     setSelectedRecord(record);
   }
@@ -60,6 +72,17 @@ function EhrInner() {
     }
   }
 
+  if (isMultiPatientRole && !viewingPatientId) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 md:p-8 max-w-5xl mx-auto">
+        <EmptyState
+          title="No patient selected"
+          description="Use the sidebar to add and select a patient to view their EHR records."
+        />
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -70,8 +93,8 @@ function EhrInner() {
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-slate-800 dark:text-slate-100">EHR Records</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1">
-          {userRole === 'clinician'
-            ? 'Upload and manage patient electronic health records'
+          {isMultiPatientRole
+            ? `EHR records for ${viewingPatientName || 'selected patient'}`
             : 'View your electronic health records and extracted data'}
         </p>
       </div>

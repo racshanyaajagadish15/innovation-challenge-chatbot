@@ -12,26 +12,73 @@ import { setIO } from './socket.js';
 import { supabase } from './utils/supabaseClient.js';
 
 async function ensureSchema() {
-  try {
-    const { data } = await supabase.from('users').select('role').limit(1);
-    if (data !== null) {
-      logger.info('users.role column exists');
-      return;
+  let ddlRan = false;
+
+  async function runDDL(description: string, sql: string): Promise<boolean> {
+    const { error } = await supabase.rpc('exec_sql', { query: sql });
+    if (error) {
+      logger.info(`Could not auto-run: ${description}. Run manually: ${sql}`);
+      logger.info(`Reason: ${error.message ?? String(error)}`);
+      return false;
     }
-  } catch {
-    // column likely doesn't exist
+    logger.info(description);
+    ddlRan = true;
+    return true;
   }
-  try {
-    await supabase.rpc('exec_sql', {
-      query: "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'patient'",
-    });
-    logger.info('Added role column to users table');
-  } catch {
-    logger.info(
-      'Could not auto-add role column. Run this SQL manually in Supabase:\n' +
-      "  ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'patient';"
+
+  // Ensure users.role column exists
+  await runDDL(
+    'Ensured users.role column',
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'patient';"
+  );
+
+  // Ensure user_relationships table
+  await runDDL(
+    'Ensured user_relationships table',
+    `CREATE TABLE IF NOT EXISTS user_relationships (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      from_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      to_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(from_user_id, to_user_id)
+    );`
+  );
+
+  // Ensure medications columns
+  const medCols: Record<string, string> = {
+    frequency: "TEXT NOT NULL DEFAULT 'once_daily'",
+    timing: "TEXT[] NOT NULL DEFAULT '{\"08:00\"}'",
+    instructions: 'TEXT',
+    active: 'BOOLEAN DEFAULT true',
+  };
+  for (const [col, def] of Object.entries(medCols)) {
+    await runDDL(
+      `Ensured medications.${col}`,
+      `ALTER TABLE medications ADD COLUMN IF NOT EXISTS ${col} ${def};`
     );
   }
+
+  // Ensure ehr_uploads columns
+  const ehrCols: Record<string, string> = {
+    file_name: "TEXT NOT NULL DEFAULT 'unknown'",
+    raw_text: "TEXT NOT NULL DEFAULT ''",
+    parsed_data: 'JSONB',
+    uploaded_by: 'UUID REFERENCES users(id)',
+  };
+  for (const [col, def] of Object.entries(ehrCols)) {
+    await runDDL(
+      `Ensured ehr_uploads.${col}`,
+      `ALTER TABLE ehr_uploads ADD COLUMN IF NOT EXISTS ${col} ${def};`
+    );
+  }
+
+  // Notify PostgREST to reload schema cache after any DDL
+  if (ddlRan) {
+    const { error } = await supabase.rpc('exec_sql', { query: "NOTIFY pgrst, 'reload schema';" });
+    if (!error) logger.info('PostgREST schema cache reload triggered');
+  }
+
+  logger.info('Schema check complete');
 }
 
 const app = express();

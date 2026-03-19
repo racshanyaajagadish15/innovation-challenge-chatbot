@@ -8,6 +8,7 @@ import userRoutes from './userRoutes.js';
 import visionRoutes from './visionRoutes.js';
 import medicationRoutes from './medicationRoutes.js';
 import ehrRoutes from './ehrRoutes.js';
+import relationshipRoutes from './relationshipRoutes.js';
 
 const router = Router();
 router.use('/user', userRoutes);
@@ -19,5 +20,6 @@ router.use('/agents', agentsRoutes);
 router.use('/chat', chatRoutes);
 router.use('/medications', medicationRoutes);
 router.use('/ehr', ehrRoutes);
+router.use('/relationships', relationshipRoutes);
 
 export default router;

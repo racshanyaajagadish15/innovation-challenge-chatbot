@@ -3,9 +3,10 @@ import { AuthRequest } from '../middleware/auth.js';
 import { supabase } from '../utils/supabaseClient.js';
 
 let knownMedCols: string[] | null = null;
+let medDiscoveryTime = 0;
 
 async function discoverMedColumns(): Promise<string[]> {
-  if (knownMedCols) return knownMedCols;
+  if (knownMedCols && Date.now() - medDiscoveryTime < 60_000) return knownMedCols;
 
   const candidates = [
     'id', 'user_id', 'patient_id',
@@ -23,6 +24,7 @@ async function discoverMedColumns(): Promise<string[]> {
     if (!error) found.push(col);
   }
   knownMedCols = found;
+  medDiscoveryTime = Date.now();
   console.log('[Medications] Discovered columns:', found);
   return found;
 }
