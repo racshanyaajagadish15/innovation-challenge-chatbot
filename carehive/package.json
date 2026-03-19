@@ -11,7 +11,7 @@
     "db:generate": "npm run db:generate -w backend",
     "db:push": "npm run db:push -w backend",
     "db:seed": "npm run db:seed -w backend",
-    "postinstall": "npm run build -w shared 2>/dev/null || true"
+    "postinstall": "npm run build -w shared || node -e \"process.exit(0)\""
   },
   "workspaces": [
     "shared",
